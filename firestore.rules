@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isMe(uid) { return signedIn() && request.auth.uid == uid; }
+    // On create: the new doc must be owned by the requester.
+    function createsOwn() { return isMe(request.resource.data.ownerId); }
+    // On update/delete: the existing doc must be owned by the requester,
+    // and ownership / creation time can never be changed.
+    function ownsExisting() { return isMe(resource.data.ownerId); }
+    function keepsOwner() {
+      return request.resource.data.ownerId == resource.data.ownerId
+          && request.resource.data.createdAt == resource.data.createdAt;
+    }
+    function memberExists(uid) {
+      return exists(/databases/$(database)/documents/members/$(uid));
+    }
+
+    // Member profiles: anyone signed in can read; only the member edits their own.
+    match /members/{uid} {
+      allow read: if signedIn();
+      allow create, update: if isMe(uid)
+        && request.resource.data.email == request.auth.token.email;
+      allow delete: if false;
+    }
+
+    // Issues: anyone signed in can read and create; only the owner updates/deletes.
+    match /issues/{issueId} {
+      allow read: if signedIn();
+      allow create: if createsOwn();
+      allow update: if ownsExisting() && keepsOwner();
+      allow delete: if ownsExisting();
+    }
+
+    // Tasks: assigned to a specific (existing) member; only the creator updates/deletes.
+    match /tasks/{taskId} {
+      allow read: if signedIn();
+      allow create: if createsOwn() && memberExists(request.resource.data.assigneeId);
+      allow update: if ownsExisting() && keepsOwner()
+        && memberExists(request.resource.data.assigneeId);
+      allow delete: if ownsExisting();
+
+      // Comments exist only under tasks; only the author updates/deletes.
+      match /comments/{commentId} {
+        allow read: if signedIn();
+        allow create: if createsOwn()
+          && exists(/databases/$(database)/documents/tasks/$(taskId));
+        allow update: if ownsExisting() && keepsOwner();
+        allow delete: if ownsExisting();
+      }
+    }
+  }
+}
