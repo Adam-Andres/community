@@ -1,12 +1,11 @@
 import 'package:firebase_core/firebase_core.dart';
 
-// Firebase web config (Firebase console → Project settings → Your apps → Web app).
-// These values are not secrets; access is enforced by firestore.rules.
+// Firebase web config. These values are not secrets; access is enforced by firestore.rules.
 const firebaseOptions = FirebaseOptions(
-  apiKey: 'REPLACE_ME',
-  authDomain: 'REPLACE_ME.firebaseapp.com',
-  projectId: 'REPLACE_ME',
-  storageBucket: 'REPLACE_ME.firebasestorage.app',
-  messagingSenderId: 'REPLACE_ME',
-  appId: 'REPLACE_ME',
+  apiKey: 'AIzaSyAPz91sihhQVXQ0eMqdqUXehkTrHs16CNg',
+  authDomain: 'community-dd944.firebaseapp.com',
+  projectId: 'community-dd944',
+  storageBucket: 'community-dd944.firebasestorage.app',
+  messagingSenderId: '1098637905489',
+  appId: '1:1098637905489:web:88770b312ba258017bb270',
 );
