@@ -11,7 +11,7 @@ All ownership rules are enforced server-side in [`firestore.rules`](firestore.ru
 |---|---|---|---|
 | `members/{uid}` | any signed-in member | only that uid | only that uid (no delete) |
 | `issues` | any signed-in member | any member (as owner) | owner only |
-| `tasks` | any signed-in member | any member (as owner), assignee must be a member | owner (creator) only |
+| `tasks` | any signed-in member | any member (as owner); must belong to an existing issue and be assigned to a member | owner (creator) only |
 | `tasks/{id}/comments` | any signed-in member | any member (as owner) | author only |
 
 Firebase Auth makes login emails unique and handles passwords.

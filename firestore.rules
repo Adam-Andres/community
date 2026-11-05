@@ -16,6 +16,9 @@ service cloud.firestore {
     function memberExists(uid) {
       return exists(/databases/$(database)/documents/members/$(uid));
     }
+    function issueExists(id) {
+      return id is string && exists(/databases/$(database)/documents/issues/$(id));
+    }
 
     // Member profiles: anyone signed in can read; only the member edits their own.
     match /members/{uid} {
@@ -33,11 +36,15 @@ service cloud.firestore {
       allow delete: if ownsExisting();
     }
 
-    // Tasks: assigned to a specific (existing) member; only the creator updates/deletes.
+    // Tasks: must belong to an existing issue and be assigned to an existing member;
+    // only the creator updates/deletes.
     match /tasks/{taskId} {
       allow read: if signedIn();
-      allow create: if createsOwn() && memberExists(request.resource.data.assigneeId);
+      allow create: if createsOwn()
+        && issueExists(request.resource.data.issueId)
+        && memberExists(request.resource.data.assigneeId);
       allow update: if ownsExisting() && keepsOwner()
+        && issueExists(request.resource.data.issueId)
         && memberExists(request.resource.data.assigneeId);
       allow delete: if ownsExisting();
 

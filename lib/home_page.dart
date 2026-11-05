@@ -15,49 +15,80 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _tab = 0;
-  StreamSubscription? _sub;
+  final _subs = <StreamSubscription>[];
 
   @override
   void initState() {
     super.initState();
-    _sub = membersCol.snapshots().listen((s) {
+    _subs.add(membersCol.snapshots().listen((s) {
       members.value = {for (final d in s.docs) d.id: d.data()};
-    });
+    }));
+    _subs.add(issuesCol.snapshots().listen((s) {
+      issues.value = {for (final d in s.docs) d.id: d.data()};
+    }));
   }
 
   @override
   void dispose() {
-    _sub?.cancel();
+    for (final s in _subs) {
+      s.cancel();
+    }
     members.value = {};
+    issues.value = {};
     super.dispose();
   }
 
-  static const _titles = ['Members', 'Issues', 'Tasks', 'My profile'];
+  static const _pages = [
+    (title: 'Members', icon: Icons.people_outline),
+    (title: 'Issues', icon: Icons.report_outlined),
+    (title: 'Tasks', icon: Icons.task_alt),
+    (title: 'My profile', icon: Icons.person_outline),
+  ];
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder(
-      valueListenable: members,
-      builder: (context, _, _) => Scaffold(
-        appBar: AppBar(title: Text(_titles[_tab])),
-        // Non-const so tabs rebuild when member names change.
+    return ListenableBuilder(
+      listenable: Listenable.merge([members, issues]),
+      builder: (context, _) => Scaffold(
+        // A drawer puts the hamburger button on the left of the AppBar.
+        appBar: AppBar(title: Text(_pages[_tab].title)),
+        drawer: _drawer(context),
+        // Non-const so pages rebuild when member/issue names change.
         body: IndexedStack(index: _tab, children: [
           MembersTab(),
           IssuesTab(),
           TasksTab(),
           const ProfileTab(),
         ]),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _tab,
-          onDestinationSelected: (i) => setState(() => _tab = i),
-          destinations: const [
-            NavigationDestination(icon: Icon(Icons.people_outline), label: 'Members'),
-            NavigationDestination(icon: Icon(Icons.report_outlined), label: 'Issues'),
-            NavigationDestination(icon: Icon(Icons.task_alt), label: 'Tasks'),
-            NavigationDestination(icon: Icon(Icons.person_outline), label: 'Profile'),
-          ],
-        ),
       ),
+    );
+  }
+
+  Widget _drawer(BuildContext context) {
+    final email = auth.currentUser?.email ?? '';
+    return NavigationDrawer(
+      selectedIndex: _tab,
+      onDestinationSelected: (i) {
+        Navigator.pop(context); // close the drawer
+        if (i < _pages.length) {
+          setState(() => _tab = i);
+        } else {
+          auth.signOut();
+        }
+      },
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(28, 24, 16, 16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(memberName(myUid, email), style: Theme.of(context).textTheme.titleMedium),
+            Text(email, style: const TextStyle(color: Colors.grey)),
+          ]),
+        ),
+        for (final p in _pages)
+          NavigationDrawerDestination(icon: Icon(p.icon), label: Text(p.title)),
+        const Padding(padding: EdgeInsets.symmetric(horizontal: 28, vertical: 8), child: Divider()),
+        const NavigationDrawerDestination(icon: Icon(Icons.logout), label: Text('Sign out')),
+      ],
     );
   }
 }

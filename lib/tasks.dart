@@ -2,8 +2,60 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'common.dart';
+import 'issues.dart';
 
 const taskStatuses = ['todo', 'in progress', 'done'];
+
+/// Opens the task form and creates the task. Every task must belong to an issue;
+/// pass [issueId] to preselect it (e.g. when adding a task from an issue page).
+Future<void> createTask(BuildContext context, {String? issueId}) async {
+  if (issues.value.isEmpty) {
+    showInfo(context, 'Create an issue first. Every task belongs to an issue.');
+    return;
+  }
+  final r = await showItemForm(context,
+      heading: 'New task',
+      statuses: taskStatuses,
+      withAssignee: true,
+      withIssue: true,
+      initial: issueId == null ? null : {'issueId': issueId});
+  if (r == null) return;
+  try {
+    await tasksCol.add({
+      ...r,
+      'ownerId': myUid,
+      'ownerName': memberName(myUid),
+      'assigneeName': memberName(r['assigneeId']),
+      'issueTitle': issueTitle(r['issueId']),
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    if (context.mounted) showError(context, e);
+  }
+}
+
+/// List tile used on the Tasks page and on an issue's page.
+class TaskTile extends StatelessWidget {
+  const TaskTile(this.doc, {super.key, this.showIssue = true});
+  final QueryDocumentSnapshot<Json> doc;
+  final bool showIssue;
+
+  @override
+  Widget build(BuildContext context) {
+    final x = doc.data();
+    final people =
+        '→ ${memberName(x['assigneeId'], x['assigneeName'])} · by ${memberName(x['ownerId'], x['ownerName'])}';
+    return ListTile(
+      title: Text(x['title'] ?? ''),
+      subtitle: Text(showIssue ? 'Issue: ${issueTitle(x['issueId'], x['issueTitle'])}\n$people' : people),
+      isThreeLine: showIssue,
+      trailing: StatusChip(x['status'] ?? 'todo'),
+      onTap: () => Navigator.push(
+          context, MaterialPageRoute(builder: (_) => TaskDetailPage(id: doc.id))),
+    );
+  }
+}
 
 class TasksTab extends StatefulWidget {
   const TasksTab({super.key});
@@ -22,30 +74,12 @@ class _TasksTabState extends State<TasksTab> {
     'open': 'Not done',
   };
 
-  Future<void> _create() async {
-    final r = await showItemForm(context,
-        heading: 'New task', statuses: taskStatuses, withAssignee: true);
-    if (r == null) return;
-    try {
-      await tasksCol.add({
-        ...r,
-        'ownerId': myUid,
-        'ownerName': memberName(myUid),
-        'assigneeName': memberName(r['assigneeId']),
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      if (mounted) showError(context, e);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         heroTag: 'newTask',
-        onPressed: _create,
+        onPressed: () => createTask(context),
         icon: const Icon(Icons.add),
         label: const Text('Task'),
       ),
@@ -79,18 +113,7 @@ class _TasksTabState extends State<TasksTab> {
                 padding: const EdgeInsets.only(bottom: 88),
                 itemCount: shown.length,
                 separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (context, i) {
-                  final d = shown[i];
-                  final x = d.data();
-                  return ListTile(
-                    title: Text(x['title'] ?? ''),
-                    subtitle: Text(
-                        '→ ${memberName(x['assigneeId'], x['assigneeName'])} · by ${memberName(x['ownerId'], x['ownerName'])}'),
-                    trailing: StatusChip(x['status'] ?? 'todo'),
-                    onTap: () => Navigator.push(
-                        context, MaterialPageRoute(builder: (_) => TaskDetailPage(id: d.id))),
-                  );
-                },
+                itemBuilder: (context, i) => TaskTile(shown[i]),
               );
             },
           ),
@@ -178,12 +201,14 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
                         heading: 'Edit task',
                         statuses: taskStatuses,
                         initial: x,
-                        withAssignee: true);
+                        withAssignee: true,
+                        withIssue: true);
                     if (r == null) return;
                     try {
                       await _ref.update({
                         ...r,
                         'assigneeName': memberName(r['assigneeId']),
+                        'issueTitle': issueTitle(r['issueId']),
                         'updatedAt': FieldValue.serverTimestamp(),
                       });
                     } catch (e) {
@@ -230,6 +255,23 @@ class _TaskDetailPageState extends State<TaskDetailPage> {
         StatusChip(x['status'] ?? 'todo'),
       ]),
       const SizedBox(height: 4),
+      InkWell(
+        onTap: issues.value.containsKey(x['issueId'])
+            ? () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => IssueDetailPage(id: x['issueId'])))
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(children: [
+            const Icon(Icons.report_outlined, size: 18),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text('Issue: ${issueTitle(x['issueId'], x['issueTitle'])}',
+                  style: TextStyle(color: Theme.of(context).colorScheme.primary)),
+            ),
+          ]),
+        ),
+      ),
       Text('Assigned to ${memberName(x['assigneeId'], x['assigneeName'])}',
           style: const TextStyle(fontWeight: FontWeight.w600)),
       Text('Created by ${memberName(x['ownerId'], x['ownerName'])} · ${fmtTime(x['createdAt'])}',

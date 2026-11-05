@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'common.dart';
+import 'tasks.dart';
 
 const issueStatuses = ['open', 'closed'];
 
@@ -125,6 +126,15 @@ class IssueDetailPage extends StatelessWidget {
                   tooltip: 'Delete',
                   icon: const Icon(Icons.delete_outline),
                   onPressed: () async {
+                    // Tasks must always belong to an issue, so an issue that
+                    // still has tasks can't be deleted (close it instead).
+                    final linked = await tasksCol.where('issueId', isEqualTo: id).limit(1).get();
+                    if (!context.mounted) return;
+                    if (linked.docs.isNotEmpty) {
+                      showInfo(context,
+                          'This issue still has tasks, so it can\'t be deleted. Set it to closed instead.');
+                      return;
+                    }
                     if (!await confirm(context, 'Delete this issue?')) return;
                     try {
                       await ref.delete();
@@ -158,9 +168,53 @@ class IssueDetailPage extends StatelessWidget {
                           SelectableText((x['description'] as String?)?.isNotEmpty == true
                               ? x['description']
                               : 'No description.'),
+                          const Divider(height: 32),
+                          Row(children: [
+                            Expanded(
+                                child: Text('Tasks',
+                                    style: Theme.of(context).textTheme.titleMedium)),
+                            TextButton.icon(
+                              onPressed: () => createTask(context, issueId: id),
+                              icon: const Icon(Icons.add),
+                              label: const Text('Add task'),
+                            ),
+                          ]),
+                          _IssueTasks(issueId: id),
                         ]),
         );
       },
     );
   }
+}
+
+class _IssueTasks extends StatefulWidget {
+  const _IssueTasks({required this.issueId});
+  final String issueId;
+  @override
+  State<_IssueTasks> createState() => _IssueTasksState();
+}
+
+class _IssueTasksState extends State<_IssueTasks> {
+  late final _stream = tasksCol.where('issueId', isEqualTo: widget.issueId).snapshots();
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder<QuerySnapshot<Json>>(
+        stream: _stream,
+        builder: (context, snap) {
+          if (snap.hasError) return Text('Error: ${snap.error}');
+          if (!snap.hasData) return const LinearProgressIndicator();
+          final docs = snap.data!.docs.toList()
+            ..sort((a, b) {
+              final ta = a.data()['createdAt'], tb = b.data()['createdAt'];
+              if (ta is! Timestamp || tb is! Timestamp) return 0;
+              return ta.compareTo(tb);
+            });
+          if (docs.isEmpty) {
+            return const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text('No tasks yet.', style: TextStyle(color: Colors.grey)));
+          }
+          return Column(children: [for (final d in docs) TaskTile(d, showIssue: false)]);
+        },
+      );
 }

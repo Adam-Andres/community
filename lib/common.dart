@@ -18,6 +18,15 @@ CollectionReference<Json> commentsCol(String taskId) =>
 /// Live map of uid -> member data, kept fresh by HomePage.
 final members = ValueNotifier<Map<String, Json>>({});
 
+/// Live map of issueId -> issue data, kept fresh by HomePage.
+final issues = ValueNotifier<Map<String, Json>>({});
+
+String issueTitle(String? id, [String? fallback]) {
+  final t = (issues.value[id]?['title'] as String?)?.trim();
+  if (t != null && t.isNotEmpty) return t;
+  return fallback ?? 'Unknown issue';
+}
+
 String memberName(String? uid, [String? fallback]) {
   final m = members.value[uid];
   final n = (m?['name'] as String?)?.trim();
@@ -108,24 +117,28 @@ class QueryList extends StatelessWidget {
 }
 
 /// Dialog for creating/editing an issue or task.
-/// Returns {title, description, status, assigneeId?} or null if cancelled.
+/// Returns {title, description, status, assigneeId?, issueId?} or null if cancelled.
 Future<Json?> showItemForm(
   BuildContext context, {
   required String heading,
   required List<String> statuses,
   Json? initial,
   bool withAssignee = false,
+  bool withIssue = false,
 }) {
   final title = TextEditingController(text: initial?['title'] ?? '');
   final desc = TextEditingController(text: initial?['description'] ?? '');
   String status = initial?['status'] ?? statuses.first;
   String? assignee = initial?['assigneeId'];
+  String? issueId = initial?['issueId'];
   final formKey = GlobalKey<FormState>();
 
   return showDialog<Json>(
     context: context,
     builder: (c) => StatefulBuilder(
       builder: (c, setState) {
+        final issueEntries = issues.value.entries.toList()
+          ..sort((a, b) => issueTitle(a.key).toLowerCase().compareTo(issueTitle(b.key).toLowerCase()));
         final memberEntries = members.value.entries.toList()
           ..sort((a, b) => memberName(a.key).toLowerCase().compareTo(memberName(b.key).toLowerCase()));
         return AlertDialog(
@@ -149,6 +162,23 @@ Future<Json?> showItemForm(
                     maxLines: 8,
                   ),
                   const SizedBox(height: 8),
+                  if (withIssue) ...[
+                    DropdownButtonFormField<String>(
+                      initialValue: issues.value.containsKey(issueId) ? issueId : null,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Issue'),
+                      items: [
+                        for (final e in issueEntries)
+                          DropdownMenuItem(
+                            value: e.key,
+                            child: Text(issueTitle(e.key), overflow: TextOverflow.ellipsis),
+                          ),
+                      ],
+                      onChanged: (v) => setState(() => issueId = v),
+                      validator: (v) => v == null ? 'Every task needs an issue' : null,
+                    ),
+                    const SizedBox(height: 8),
+                  ],
                   if (withAssignee)
                     DropdownButtonFormField<String>(
                       initialValue: members.value.containsKey(assignee) ? assignee : null,
@@ -184,6 +214,7 @@ Future<Json?> showItemForm(
                   'description': desc.text.trim(),
                   'status': status,
                   if (withAssignee) 'assigneeId': assignee,
+                  if (withIssue) 'issueId': issueId,
                 });
               },
               child: const Text('Save'),
